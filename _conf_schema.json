@@ -1,0 +1,113 @@
+{
+  "enabled": {
+    "description": "启用测试插件命令",
+    "type": "bool",
+    "default": true
+  },
+  "backend_mode": {
+    "description": "身份查询后端",
+    "type": "string",
+    "default": "local",
+    "hint": "仅接受 local 或 site；site 模式签到还需显式启用 site_checkin_enabled。"
+  },
+  "binding_enabled": {
+    "description": "启用网站账号绑定命令",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭；启用前需由管理员完成网站 OAuth 客户端、路由、服务能力和允许名单配置，并确保 AstrBot 全局 trace_enable 关闭。"
+  },
+  "site_base_url": {
+    "description": "Xingxy 网站基础地址",
+    "type": "string",
+    "default": "",
+    "hint": "填写 HTTPS 站点根地址，不带路径、查询参数或片段。"
+  },
+  "service_key_id": {
+    "description": "Xingxy 服务密钥 ID",
+    "type": "string",
+    "default": "",
+    "hint": "由服务端配置提供；不会在命令响应中显示。"
+  },
+  "service_secret": {
+    "description": "Xingxy 服务签名密钥",
+    "type": "string",
+    "default": "",
+    "hint": "填写至少 32 字节的服务端密钥；不要写入公开仓库。"
+  },
+  "binding_service_key_id": {
+    "description": "Xingxy 账号绑定服务密钥 ID",
+    "type": "string",
+    "default": "",
+    "hint": "独立于只读身份查询密钥；仅用于 identity:bind 能力。"
+  },
+  "binding_service_secret": {
+    "description": "Xingxy 账号绑定服务签名密钥",
+    "type": "string",
+    "default": "",
+    "format": "password",
+    "hint": "独立绑定服务密钥，至少 32 字节；请通过私有运行时配置提供。"
+  },
+  "reward_points": {
+    "description": "模拟签到奖励积分",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 0,
+      "max": 1000,
+      "step": 1
+    }
+  },
+  "default_bound": {
+    "description": "新测试身份默认是否视为已绑定",
+    "type": "bool",
+    "default": true,
+    "hint": "仅用于本地模拟数据；不会创建或修改生产绑定。"
+  },
+  "default_test_user_id": {
+    "description": "新测试身份使用的模拟 user_id",
+    "type": "int",
+    "default": 10001,
+    "hint": "仅用于本地测试数据。"
+  },
+  "admin_only_reset": {
+    "description": "仅允许管理员清空测试数据",
+    "type": "bool",
+    "default": true
+  },
+  "points_read_enabled": {
+    "description": "启用真实站点积分只读查询",
+    "type": "bool",
+    "default": false
+  },
+  "points_service_key_id": {
+    "description": "积分读取专用密钥ID",
+    "type": "string",
+    "default": ""
+  },
+  "points_service_secret": {
+    "description": "积分读取专用签名密钥",
+    "type": "string",
+    "format": "password",
+    "default": "",
+    "hint": "仅需points:read权限；不会复用其他服务密钥。"
+  },
+  "site_checkin_enabled": {
+    "description": "启用真实网站签到和站点积分奖励",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭；只在 backend_mode=site、Telegram 私聊且 AstrBot 全局 trace_enable 关闭时调用网站。"
+  },
+  "checkin_service_key_id": {
+    "description": "网站签到专用密钥 ID",
+    "type": "string",
+    "default": "",
+    "hint": "独立于身份、绑定和积分读取密钥；只授予 tasks:checkin。"
+  },
+  "checkin_service_secret": {
+    "description": "网站签到专用签名密钥",
+    "type": "string",
+    "format": "password",
+    "default": "",
+    "hint": "至少 32 字节；仅通过私有 AstrBot 运行时配置提供。"
+  }
+}
