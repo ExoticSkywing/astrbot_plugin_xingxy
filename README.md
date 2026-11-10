@@ -1,4 +1,29 @@
-# Xingxy AstrBot 测试插件
+# Xingxy 站点助手
+
+AstrBot 的 Telegram 业务插件：查询 WordPress 站点身份与积分、发起 OAuth 绑定、提交站点签到。站点决定绑定关系和奖励，插件接收命令并展示结果。
+
+## 仓库与版本
+
+- 本仓库只管理 Python 插件源码、配置格式、文档和插件单元测试。
+- `v0.4.2-live` 标签保存 2026-11-11 整理仓库时采集的线上源码，不包含线上配置或用户数据，也不代表完整业务验收已通过。
+- 当前开发版本为 `v0.4.3-dev`，包含此前尚未部署的可选经验值响应校验与展示。提交或推送本仓库不会部署到线上。
+- 当前核对的 AstrBot 核心版本是 4.29.4（Python 3.12）。插件声明支持 4.29 系列；其他核心版本需另行验证。
+
+## 安装与开发
+
+在 AstrBot 的插件管理页面通过本仓库地址安装，或把仓库克隆到独立开发实例的 `data/plugins/astrbot_plugin_xingxy/`。通过 WebUI 配置站点地址及专用凭据，然后重载插件。直接安装不会获得 Xingxy 站点权限，需要站点管理员配置服务能力和允许名单。
+
+```bash
+git clone https://github.com/ExoticSkywing/astrbot_plugin_xingxy.git
+cd astrbot_plugin_xingxy
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+测试使用合成身份、临时目录、AstrBot stub 和模拟 HTTP，不访问 Telegram 或真实 WordPress。运行时网络库 `aiohttp` 由目标 AstrBot 核心提供。
+
+真实配置通过 AstrBot 配置管理保存到插件源码目录之外；仓库仅提供 `_conf_schema.json`，不提交密钥、配置值或本地测试数据。
+
+## 功能与配置
 
 这是用于在 AstrBot 中验证 Xingxy 命令交互的插件。默认使用本地模拟数据，也可查询网站身份与积分、启动网站账号绑定流程，并在显式启用后执行网站签到。命令包括 `/xy_help`、`/xy_identity`、`/xy_site_identity`、`/xy_balance`、`/xy_bind`、`/xy_bind_confirm <code>`、`/xy_status`、`/xy_checkin [event_id]`、`/xy_flow` 和管理员用的 `/xy_reset`。
 

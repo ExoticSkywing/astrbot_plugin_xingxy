@@ -197,8 +197,8 @@ class JsonTestStore:
     PLUGIN_NAME,
     "Xingxy",
     "Xingxy 站点身份、积分、账号绑定、签到与本地模拟。",
-    "v0.4.2",
-    "",
+    "v0.4.3-dev",
+    "https://github.com/ExoticSkywing/astrbot_plugin_xingxy",
 )
 class XingxyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -437,8 +437,13 @@ class XingxyPlugin(Star):
             return "ℹ️ 网站显示今日已签到（{date}），本次未重复发放积分。event_id={event_id}".format(
                 date=result["date"], event_id=event_id
             )
-        return "✅ 网站签到成功：+{amount} 积分（{date}，event_id={event_id}）".format(
-            amount=result["amount"], date=result["date"], event_id=event_id
+        message = "✅ 网站签到成功：+{amount} 积分".format(amount=result["amount"])
+        # The site owns the actual experience amount. Report only a validated,
+        # positive value and never infer a balance or cumulative level locally.
+        if result.get("integral", 0) > 0:
+            message += "，+{integral} 经验".format(integral=result["integral"])
+        return "{message}（{date}，event_id={event_id}）".format(
+            message=message, date=result["date"], event_id=event_id
         )
 
     def _binding_site_config(self) -> Dict[str, Any]:

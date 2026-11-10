@@ -245,7 +245,7 @@ class SiteApiClient:
         if status == 403:
             return {"outcome": "unbound"}
         if status == 200:
-            if not isinstance(payload, dict) or set(payload) != {
+            if not isinstance(payload, dict) or set(payload) - {"integral"} != {
                 "ok", "checked_in", "date", "amount"
             }:
                 raise SiteApiError("site_api_response_invalid")
@@ -257,11 +257,19 @@ class SiteApiClient:
                 or not 0 <= payload["amount"] <= 9007199254740991
             ):
                 raise SiteApiError("site_api_response_invalid")
-            return {
+            result = {
                 "outcome": "success",
                 "date": payload["date"],
                 "amount": payload["amount"],
             }
+            if "integral" in payload and (
+                type(payload["integral"]) is not int
+                or not 0 <= payload["integral"] <= 2147483647
+            ):
+                raise SiteApiError("site_api_response_invalid")
+            if "integral" in payload:
+                result["integral"] = payload["integral"]
+            return result
 
         if not isinstance(payload, dict) or set(payload) != {
             "ok", "checked_in", "reason", "date", "amount"
