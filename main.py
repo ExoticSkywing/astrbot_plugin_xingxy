@@ -197,7 +197,7 @@ class JsonTestStore:
     PLUGIN_NAME,
     "Xingxy",
     "Xingxy 站点身份、积分、账号绑定、签到与本地模拟。",
-    "v0.4.4",
+    "v0.4.5",
     "https://github.com/ExoticSkywing/astrbot_plugin_xingxy",
 )
 class XingxyPlugin(Star):

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.5
+
+- Deep-link confirmation respects the plugin enabled switch before handling `/start` payloads.
+
 ## v0.4.4
 
 - 支持 Telegram `start` 深链接自动提交绑定确认，保留手动确认码备用。
