@@ -42,6 +42,13 @@ def _install_astrbot_stubs(data_dir_holder):
 
             return decorate
 
+        @staticmethod
+        def regex(*args, **kwargs):
+            def decorate(func):
+                return func
+
+            return decorate
+
     class StubStar:
         def __init__(self, context):
             self.context = context
@@ -93,12 +100,15 @@ class FakeEvent:
         platform="telegram",
         message_type="FriendMessage",
         group_id="",
+        message="",
     ):
         self.sender_id = sender_id
         self.admin = admin
         self.platform = platform
         self.message_type = message_type
         self.group_id = group_id
+        self.message = message
+        self.stopped = False
 
     def get_sender_id(self):
         return self.sender_id
@@ -114,6 +124,12 @@ class FakeEvent:
 
     def get_group_id(self):
         return self.group_id
+
+    def get_message_str(self):
+        return self.message
+
+    def stop_event(self):
+        self.stopped = True
 
     def plain_result(self, text):
         return text
@@ -1211,6 +1227,16 @@ class XingxyPluginTests(unittest.TestCase):
         self.assertEqual(calls[1][2]["X-Xingxy-Key-Id"], "binding-key")
         self.assertFalse(plugin.store.path.exists())
         self.assertIn(None, context.config_reads)
+
+        deep_link_event = FakeEvent(message="/start xybind_A1b2C3d4E5f6G7h8")
+        deep_link = _collect(plugin.cmd_bind_deep_link(deep_link_event))[0]
+        self.assertIn("网站账号绑定成功", deep_link)
+        self.assertTrue(deep_link_event.stopped)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            calls[2][1],
+            b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
+        )
 
     def test_bind_command_sanitizes_failure_and_never_echoes_code(self):
         config = {

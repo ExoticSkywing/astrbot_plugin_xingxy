@@ -197,7 +197,7 @@ class JsonTestStore:
     PLUGIN_NAME,
     "Xingxy",
     "Xingxy 站点身份、积分、账号绑定、签到与本地模拟。",
-    "v0.4.3-dev",
+    "v0.4.4",
     "https://github.com/ExoticSkywing/astrbot_plugin_xingxy",
 )
 class XingxyPlugin(Star):
@@ -551,6 +551,18 @@ class XingxyPlugin(Star):
             "TG UID：{tg_uid}\n网站 user_id：{user_id}"
         ).format(tg_uid=identity["tg_uid"], user_id=identity["user_id"])
 
+    async def _bind_deep_link_text(self, event: AstrMessageEvent) -> str:
+        """Confirm a site-owned binding from a Telegram start deep link."""
+        if not self._binding_enabled():
+            return "网站账号绑定当前未启用。"
+        if not self._is_telegram_private(event):
+            return "网站账号绑定仅接受 Telegram 私聊消息。"
+        message = event.get_message_str().strip()
+        match = re.fullmatch(r"/start(?:@[A-Za-z0-9_]+)?\s+(xybind_[A-Za-z0-9_-]{16})", message)
+        if match is None:
+            return ""
+        return await self._bind_confirm_text(event, match.group(1)[7:])
+
     async def _admin_allowed(self, event: AstrMessageEvent) -> bool:
         if self.config.get("admin_only_reset", True) is False:
             return True
@@ -706,6 +718,13 @@ class XingxyPlugin(Star):
         yield event.plain_result(
             await self._bind_confirm_text(event, confirmation_code)
         )
+
+    @filter.regex(r"\A/start(?:@[A-Za-z0-9_]+)?\s+xybind_[A-Za-z0-9_-]{16}\Z")
+    async def cmd_bind_deep_link(self, event: AstrMessageEvent):
+        result = await self._bind_deep_link_text(event)
+        event.stop_event()
+        if result:
+            yield event.plain_result(result)
 
     @filter.command("xy_checkin")
     async def cmd_checkin(self, event: AstrMessageEvent, event_id: str = ""):
