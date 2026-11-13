@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.8
+
+- Handle a Telegram `/start` without a preserved deep-link parameter by confirming the newest authorized pending binding for the authenticated sender.
+- Keep ordinary `/start` messages untouched when no pending binding exists.
+
 ## v0.4.5
 
 - Deep-link confirmation respects the plugin enabled switch before handling `/start` payloads.

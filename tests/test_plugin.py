@@ -1245,6 +1245,13 @@ class XingxyPluginTests(unittest.TestCase):
             b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
         )
 
+        bare_start_event = FakeEvent(message="/start")
+        bare_start = _collect(plugin.cmd_bind_deep_link(bare_start_event))[0]
+        self.assertIn("网站账号绑定成功", bare_start)
+        self.assertTrue(bare_start_event.stopped)
+        self.assertEqual(len(calls), 5)
+        self.assertEqual(calls[4][1], b'{"tg_uid":"7001"}')
+
     def test_bind_command_sanitizes_failure_and_never_echoes_code(self):
         config = {
             "binding_enabled": True,

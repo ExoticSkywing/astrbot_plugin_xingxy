@@ -197,7 +197,7 @@ class JsonTestStore:
     PLUGIN_NAME,
     "Xingxy",
     "Xingxy 站点身份、积分、账号绑定、签到与本地模拟。",
-    "v0.4.5",
+    "v0.4.8",
     "https://github.com/ExoticSkywing/astrbot_plugin_xingxy",
 )
 class XingxyPlugin(Star):
@@ -577,9 +577,26 @@ class XingxyPlugin(Star):
             return "网站账号绑定仅接受 Telegram 私聊消息。"
         message = event.get_message_str().strip()
         match = re.fullmatch(r"/start(?:@[A-Za-z0-9_]+)?\s+(xybind_[A-Za-z0-9_-]{16})", message)
-        if match is None:
+        if match is not None:
+            return await self._bind_confirm_text(event, match.group(1)[7:])
+        if not re.fullmatch(r"/start(?:@[A-Za-z0-9_]+)?", message):
             return ""
-        return await self._bind_confirm_text(event, match.group(1)[7:])
+        tg_uid = self._site_command_tg_uid(event)
+        if not tg_uid or self._binding_configuration_issues():
+            return ""
+        try:
+            identity = await self._binding_site_client().confirm_pending_link(tg_uid)
+        except SiteApiError:
+            return ""
+        except Exception:
+            return ""
+        if identity is None:
+            return ""
+        return (
+            "✅ 网站账号绑定成功\n"
+            "数据来源：Xingxy 网站\n"
+            "TG UID：{tg_uid}\n网站 user_id：{user_id}"
+        ).format(tg_uid=identity["tg_uid"], user_id=identity["user_id"])
 
     async def _admin_allowed(self, event: AstrMessageEvent) -> bool:
         if self.config.get("admin_only_reset", True) is False:
@@ -745,11 +762,11 @@ class XingxyPlugin(Star):
             await self._bind_confirm_text(event, confirmation_code)
         )
 
-    @filter.regex(r"\A/start(?:@[A-Za-z0-9_]+)?\s+xybind_[A-Za-z0-9_-]{16}\Z")
+    @filter.regex(r"\A/start(?:@[A-Za-z0-9_]+)?(?:\s+xybind_[A-Za-z0-9_-]{16})?\Z")
     async def cmd_bind_deep_link(self, event: AstrMessageEvent):
         result = await self._bind_deep_link_text(event)
-        event.stop_event()
         if result:
+            event.stop_event()
             yield event.plain_result(result)
 
     @filter.command("xy_checkin")

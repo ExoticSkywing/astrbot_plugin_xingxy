@@ -16,6 +16,7 @@ from . import service_signature
 IDENTITY_ROUTE = "/xingxy-ecosystem/v1/identity/resolve"
 LINK_START_ROUTE = "/xingxy-ecosystem/v1/identity/link/start"
 IDENTITY_BIND_ROUTE = "/xingxy-ecosystem/v1/identity/bind"
+IDENTITY_CONFIRM_PENDING_ROUTE = "/xingxy-ecosystem/v1/identity/link/confirm-pending"
 POINTS_BALANCE_ROUTE = "/xingxy-ecosystem/v1/points/balance"
 CHECKIN_ROUTE = "/xingxy-ecosystem/v1/tasks/checkin"
 OAUTH_AUTHORIZE_PATH = "/wp-json/zibll-oauth/v1/authorize"
@@ -303,6 +304,20 @@ class SiteApiClient:
             IDENTITY_BIND_ROUTE,
             {"tg_uid": tg_uid, "confirmation_code": confirmation_code},
         )
+        identity = validate_identity_response(payload, tg_uid)
+        if identity["user_id"] is None or identity["status"] != "active":
+            raise SiteApiError("site_api_response_invalid")
+        return identity
+
+    async def confirm_pending_link(self, tg_uid: str) -> Optional[Dict[str, Any]]:
+        """Confirm the newest authorized site link for this Telegram sender."""
+        status, payload = await self._post_json_response(
+            IDENTITY_CONFIRM_PENDING_ROUTE,
+            {"tg_uid": tg_uid},
+            (200, 403),
+        )
+        if status == 403:
+            return None
         identity = validate_identity_response(payload, tg_uid)
         if identity["user_id"] is None or identity["status"] != "active":
             raise SiteApiError("site_api_response_invalid")
