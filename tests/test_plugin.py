@@ -1378,6 +1378,10 @@ class XingxyPluginTests(unittest.TestCase):
         self.assertEqual(calls[1][1], b'{"tg_uid":"7001"}')
         self.assertEqual(
             calls[2][1],
+            b'{"tg_uid":"7001"}',
+        )
+        self.assertEqual(
+            calls[3][1],
             b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
         )
         self.assertFalse(plugin.store.path.exists())
