@@ -1,7 +1,7 @@
 name: astrbot_plugin_xingxy
 display_name: Xingxy 站点助手
 desc: Xingxy 站点身份、积分查询、账号绑定、真实签到与本地模拟。
-version: v0.4.9
+version: v0.4.10
 author: Xingxy
 repo: https://github.com/ExoticSkywing/astrbot_plugin_xingxy
 support_platforms:

@@ -30,6 +30,20 @@ class SiteApiError(Exception):
     """A safe error category that never includes credentials or response data."""
 
 
+class SiteBindingConflictError(SiteApiError):
+    """The site rejected a binding because its binding state conflicts."""
+
+    def __init__(self):
+        super().__init__("site_api_binding_conflict")
+
+
+class SiteBindingConfirmationError(SiteApiError):
+    """The site denied confirmation without exposing its private reason."""
+
+    def __init__(self):
+        super().__init__("site_api_binding_confirmation_denied")
+
+
 def _is_iso_date(value: Any) -> bool:
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         return False
@@ -299,10 +313,22 @@ class SiteApiClient:
         """Confirm one site-owned account-link session."""
         if not isinstance(confirmation_code, str) or not CONFIRMATION_CODE_RE.fullmatch(confirmation_code):
             raise SiteApiError("site_api_confirmation_invalid")
-        payload = await self._post_json(
+        status, payload = await self._post_json_response(
             IDENTITY_BIND_ROUTE,
             {"tg_uid": tg_uid, "confirmation_code": confirmation_code},
+            (200, 403, 409),
         )
+        if status == 403:
+            raise SiteBindingConfirmationError()
+        if status == 409:
+            if (
+                isinstance(payload, dict)
+                and set(payload) == {"ok", "error"}
+                and payload.get("ok") is False
+                and payload.get("error") == "conflict"
+            ):
+                raise SiteBindingConflictError()
+            raise SiteApiError("site_api_response_invalid")
         identity = validate_identity_response(payload, tg_uid)
         if identity["user_id"] is None or identity["status"] != "active":
             raise SiteApiError("site_api_response_invalid")

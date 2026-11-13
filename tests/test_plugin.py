@@ -1154,6 +1154,95 @@ class XingxyPluginTests(unittest.TestCase):
             asyncio.run(client.confirm_link("7001", "bad-code"))
         self.assertEqual(calls, [])
 
+    def test_confirm_link_maps_only_standard_conflict_response(self):
+        site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
+        client = site_api.SiteApiClient(
+            {"site_base_url": "https://example.test", "service_key_id": "binding-key",
+             "service_secret": "b" * 32},
+            transport=lambda *_args: (409, b'{"ok":false,"error":"conflict"}'),
+        )
+        with self.assertRaises(site_api.SiteBindingConflictError) as raised:
+            asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+        self.assertEqual(str(raised.exception), "site_api_binding_conflict")
+
+        invalid_bodies = (
+            b'{"ok":0,"error":"conflict"}',
+            b'{"ok":true,"error":"conflict"}',
+            b'{"ok":"false","error":"conflict"}',
+            b'{"ok":false,"error":"other"}',
+            b'{"error":"conflict"}',
+            b'{"ok":false}',
+            b'{"ok":false,"error":"conflict","user_id":42}',
+            b'[{"ok":false,"error":"conflict"}]',
+            b'null',
+            b'"conflict"',
+            b'{"ok":false,"error":',
+            b'\xffprivate response',
+        )
+        for body in invalid_bodies:
+            with self.subTest(body=body):
+                client.transport = lambda *_args, body=body: (409, body)
+                with self.assertRaises(site_api.SiteApiError) as raised:
+                    asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+                self.assertIs(type(raised.exception), site_api.SiteApiError)
+                self.assertEqual(str(raised.exception), "site_api_response_invalid")
+
+    def test_confirm_link_denial_never_parses_private_response_body(self):
+        site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
+        client = site_api.SiteApiClient(
+            {"site_base_url": "https://example.test", "service_key_id": "binding-key",
+             "service_secret": "b" * 32},
+        )
+        for body in (b'{"error":"private account and confirmation code"}', b'\xffnot JSON'):
+            with self.subTest(body=body):
+                client.transport = lambda *_args, body=body: (403, body)
+                with patch.object(site_api.json, "loads", side_effect=AssertionError("must not parse")) as parser:
+                    with self.assertRaises(site_api.SiteBindingConfirmationError) as raised:
+                        asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+                parser.assert_not_called()
+                self.assertEqual(str(raised.exception), "site_api_binding_confirmation_denied")
+
+    def test_confirm_link_service_failures_remain_generic(self):
+        site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
+        client = site_api.SiteApiClient(
+            {"site_base_url": "https://example.test", "service_key_id": "binding-key",
+             "service_secret": "b" * 32},
+            transport=lambda *_args: (503, b'{"ok":false,"error":"conflict"}'),
+        )
+        with self.assertRaises(site_api.SiteApiError) as raised:
+            asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+        self.assertIs(type(raised.exception), site_api.SiteApiError)
+        self.assertEqual(str(raised.exception), "site_api_http_error")
+
+        async def timed_out(*_args):
+            raise asyncio.TimeoutError("private transport diagnostics")
+
+        client.transport = timed_out
+        with self.assertRaises(site_api.SiteApiError) as raised:
+            asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+        self.assertIs(type(raised.exception), site_api.SiteApiError)
+        self.assertEqual(str(raised.exception), "site_api_unavailable")
+
+    def test_confirm_link_success_still_requires_matching_active_identity(self):
+        site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
+        client = site_api.SiteApiClient(
+            {"site_base_url": "https://example.test", "service_key_id": "binding-key",
+             "service_secret": "b" * 32},
+        )
+        invalid_payloads = (
+            {"ok": True, "bound": True, "user": {"user_id": 42, "tg_uid": "7002", "status": "active"}},
+            {"ok": True, "bound": True, "user": {"user_id": 42, "tg_uid": "7001", "status": "inactive"}},
+            {"ok": True, "bound": False, "user": None},
+            {"ok": False, "error": "conflict"},
+        )
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                client.transport = lambda *_args, payload=payload: (200, json.dumps(payload).encode())
+                with self.assertRaises(site_api.SiteApiError) as raised:
+                    asyncio.run(client.confirm_link("7001", "A1b2C3d4E5f6G7h8"))
+                self.assertIs(type(raised.exception), site_api.SiteApiError)
+                self.assertEqual(str(raised.exception), "site_api_response_invalid")
+
     def test_bind_commands_are_feature_gated_private_only_and_site_only(self):
         site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
         config = {
@@ -1281,9 +1370,11 @@ class XingxyPluginTests(unittest.TestCase):
             self.assertEqual(calls[-1][1], {"tg_uid": "7001", "confirmation_code": "A1b2C3d4E5f6G7h8"})
             self.assertEqual(calls[-1][2], "binding-key")
         before = len(calls)
-        for message in ("start", "/start", "start invite_7002", "start xybind_short", "start xybind_A1b2C3d4E5f6G7h8 extra"):
+        for message in ("start", "/start", "start invite_7002", "/start invite_7002", "start xybind_short", "start xybind_A1b2C3d4E5f6G7h8 extra"):
             self.assertIsNone(re.search(pattern, message))
-            self.assertEqual(_collect(plugin.cmd_bind_deep_link(FakeEvent(message=message))), [])
+            event = FakeEvent(message=message)
+            self.assertEqual(_collect(plugin.cmd_bind_deep_link(event)), [])
+            self.assertFalse(event.stopped)
         self.assertEqual(len(calls), before)
 
     def test_start_binding_keeps_private_trace_and_enabled_guards(self):
@@ -1323,6 +1414,71 @@ class XingxyPluginTests(unittest.TestCase):
         self.assertNotIn(code, output)
         self.assertNotIn("raw private response", output)
         self.assertFalse(plugin.store.path.exists())
+
+    def test_binding_failure_messages_match_manual_and_start_without_leaking_details(self):
+        plugin = self.module.XingxyPlugin(FakeContext(), {
+            "binding_enabled": True,
+            "site_base_url": "https://example.test",
+            "binding_service_key_id": "binding-key",
+            "binding_service_secret": "b" * 32,
+        })
+        code = "A1b2C3d4E5f6G7h8"
+        private_details = code + " private-account-7001"
+        conflict_text = (
+            "无法绑定：该站点账号或当前 Telegram 账号已存在其他绑定，原绑定不会被替换。\n"
+            "如果该站点账号已绑定其他 Telegram，请切换到未绑定的站点账号，再发送 /xy_bind 重新授权。"
+        )
+        denial_text = (
+            "绑定确认未通过：链接可能已失效，或不属于当前 Telegram 账号，"
+            "也可能当前账号暂不允许绑定。请发送 /xy_bind 重新授权；若仍失败，请联系管理员。"
+        )
+        service_text = "网站账号绑定未完成：服务暂时不可用，请稍后重试。"
+        cases = (
+            ((409, b'{"ok":false,"error":"conflict"}'), conflict_text,
+             "[xingxy] 网站账号绑定确认存在冲突"),
+            ((403, private_details.encode()), denial_text,
+             "[xingxy] 网站账号绑定确认被拒绝"),
+            ((409, json.dumps({"ok": 0, "error": "conflict", "detail": private_details}).encode()),
+             service_text, "[xingxy] 网站账号绑定确认服务暂不可用"),
+            ((409, b'\xff' + private_details.encode()), service_text,
+             "[xingxy] 网站账号绑定确认服务暂不可用"),
+            ((503, private_details.encode()), service_text,
+             "[xingxy] 网站账号绑定确认服务暂不可用"),
+            (asyncio.TimeoutError(private_details), service_text,
+             "[xingxy] 网站账号绑定确认服务暂不可用"),
+            ((200, b'{"ok":true,"bound":true,"user":{"user_id":42,"tg_uid":"7002","status":"active"}}'),
+             service_text, "[xingxy] 网站账号绑定确认服务暂不可用"),
+        )
+        for response, expected_text, expected_log in cases:
+            with self.subTest(response=response):
+                calls = []
+
+                def transport(url, body, _headers, response=response):
+                    calls.append((url, json.loads(body)))
+                    if isinstance(response, Exception):
+                        raise response
+                    return response
+
+                plugin.site_transport = transport
+                with patch.object(self.module.logger, "error") as log:
+                    manual = _collect(plugin.cmd_bind_confirm(FakeEvent(), code))
+                    event = FakeEvent(message="/start xybind_" + code)
+                    deep_link = _collect(plugin.cmd_bind_deep_link(event))
+                self.assertEqual(manual, [expected_text])
+                self.assertEqual(deep_link, manual)
+                self.assertTrue(event.stopped)
+                self.assertEqual(len(calls), 2)
+                for url, payload in calls:
+                    self.assertTrue(url.endswith("/identity/bind"))
+                    self.assertEqual(payload, {"tg_uid": "7001", "confirmation_code": code})
+                self.assertEqual(log.call_count, 2)
+                for call in log.call_args_list:
+                    self.assertEqual(call.args, (expected_log,))
+                    self.assertEqual(call.kwargs, {})
+                for private_value in (code, "7001", "7002", "42", "private-account", "b" * 32):
+                    self.assertNotIn(private_value, expected_text)
+                    self.assertNotIn(private_value, str(log.call_args_list))
+                self.assertFalse(plugin.store.path.exists())
 
     def test_bind_does_not_reauthorize_existing_identity_unless_verify_command_is_used(self):
         site_api = sys.modules["astrbot_plugin_xingxy.site_api"]

@@ -14,6 +14,8 @@ from .site_api import (
     CONFIRMATION_CODE_RE,
     SiteApiClient,
     SiteApiError,
+    SiteBindingConflictError,
+    SiteBindingConfirmationError,
     configuration_issues,
 )
 
@@ -199,7 +201,7 @@ class JsonTestStore:
     PLUGIN_NAME,
     "Xingxy",
     "Xingxy 站点身份、积分、账号绑定、签到与本地模拟。",
-    "v0.4.9",
+    "v0.4.10",
     "https://github.com/ExoticSkywing/astrbot_plugin_xingxy",
 )
 class XingxyPlugin(Star):
@@ -557,9 +559,21 @@ class XingxyPlugin(Star):
                 tg_uid,
                 confirmation_code,
             )
+        except SiteBindingConflictError:
+            logger.error("[xingxy] 网站账号绑定确认存在冲突")
+            return (
+                "无法绑定：该站点账号或当前 Telegram 账号已存在其他绑定，原绑定不会被替换。\n"
+                "如果该站点账号已绑定其他 Telegram，请切换到未绑定的站点账号，再发送 /xy_bind 重新授权。"
+            )
+        except SiteBindingConfirmationError:
+            logger.error("[xingxy] 网站账号绑定确认被拒绝")
+            return (
+                "绑定确认未通过：链接可能已失效，或不属于当前 Telegram 账号，"
+                "也可能当前账号暂不允许绑定。请发送 /xy_bind 重新授权；若仍失败，请联系管理员。"
+            )
         except SiteApiError:
-            logger.error("[xingxy] 网站账号绑定确认失败")
-            return "网站账号绑定未完成；请确认代码有效且属于当前 Telegram 账号后重试。"
+            logger.error("[xingxy] 网站账号绑定确认服务暂不可用")
+            return "网站账号绑定未完成：服务暂时不可用，请稍后重试。"
         except Exception:
             logger.error("[xingxy] 网站账号绑定确认遇到内部错误")
             return "网站账号绑定未完成，请稍后重试。"
