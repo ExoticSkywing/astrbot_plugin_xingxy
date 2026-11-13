@@ -45,6 +45,7 @@ def _install_astrbot_stubs(data_dir_holder):
         @staticmethod
         def regex(*args, **kwargs):
             def decorate(func):
+                func._registered_regex = args[0]
                 return func
 
             return decorate
@@ -1246,11 +1247,59 @@ class XingxyPluginTests(unittest.TestCase):
         )
 
         bare_start_event = FakeEvent(message="/start")
-        bare_start = _collect(plugin.cmd_bind_deep_link(bare_start_event))[0]
-        self.assertIn("网站账号绑定成功", bare_start)
-        self.assertTrue(bare_start_event.stopped)
-        self.assertEqual(len(calls), 5)
-        self.assertEqual(calls[4][1], b'{"tg_uid":"7001"}')
+        self.assertEqual(_collect(plugin.cmd_bind_deep_link(bare_start_event)), [])
+        self.assertFalse(bare_start_event.stopped)
+        self.assertEqual(len(calls), 4)
+
+    def test_start_payload_survives_wake_prefix_normalization(self):
+        import re
+
+        plugin = self.module.XingxyPlugin(FakeContext(), {
+            "binding_enabled": True,
+            "site_base_url": "https://example.test",
+            "binding_service_key_id": "binding-key",
+            "binding_service_secret": "b" * 32,
+        })
+        calls = []
+
+        def transport(url, body, headers):
+            calls.append((url, json.loads(body), headers["X-Xingxy-Key-Id"]))
+            return 200, b'{"ok":true,"bound":true,"user":{"user_id":42,"tg_uid":"7001","status":"active"}}'
+
+        plugin.site_transport = transport
+        pattern = plugin.cmd_bind_deep_link._registered_regex
+        for message in (
+            "start xybind_A1b2C3d4E5f6G7h8",
+            "/start xybind_A1b2C3d4E5f6G7h8",
+            "start@example_bot xybind_A1b2C3d4E5f6G7h8",
+        ):
+            self.assertIsNotNone(re.search(pattern, message))
+            event = FakeEvent(message=message)
+            output = _collect(plugin.cmd_bind_deep_link(event))
+            self.assertIn("网站账号绑定成功", output[0])
+            self.assertTrue(event.stopped)
+            self.assertEqual(calls[-1][1], {"tg_uid": "7001", "confirmation_code": "A1b2C3d4E5f6G7h8"})
+            self.assertEqual(calls[-1][2], "binding-key")
+        before = len(calls)
+        for message in ("start", "/start", "start invite_7002", "start xybind_short", "start xybind_A1b2C3d4E5f6G7h8 extra"):
+            self.assertIsNone(re.search(pattern, message))
+            self.assertEqual(_collect(plugin.cmd_bind_deep_link(FakeEvent(message=message))), [])
+        self.assertEqual(len(calls), before)
+
+    def test_start_binding_keeps_private_trace_and_enabled_guards(self):
+        config = {"binding_enabled": True, "site_base_url": "https://example.test", "binding_service_key_id": "binding-key", "binding_service_secret": "b" * 32}
+        message = "start xybind_A1b2C3d4E5f6G7h8"
+        for event, values, traced in (
+            (FakeEvent(message=message, group_id="-1001"), config, False),
+            (FakeEvent(message=message, platform="discord"), config, False),
+            (FakeEvent(message=message), config, True),
+            (FakeEvent(message=message), dict(config, enabled=False), False),
+        ):
+            plugin = self.module.XingxyPlugin(FakeContext(trace_enable=traced), values)
+            calls = []
+            plugin.site_transport = lambda *args: calls.append(args)
+            _collect(plugin.cmd_bind_deep_link(event))
+            self.assertEqual(calls, [])
 
     def test_bind_command_sanitizes_failure_and_never_echoes_code(self):
         config = {
@@ -1448,6 +1497,10 @@ class XingxyPluginTests(unittest.TestCase):
             "/xy_bind_confirm " + code,
             "xy_bind_confirm@xingxybot\t" + code,
             "xy_bind_confirm  @xingxybot\n" + code,
+            "/start xybind_" + code,
+            "start@xingxybot xybind_" + code,
+            "https://t.me/example_bot?start=xybind_" + code,
+            "tg://resolve?domain=example_bot&start=xybind_" + code,
         )
         for outline in inbound_outlines:
             with self.subTest(outline=outline.splitlines()[0]):

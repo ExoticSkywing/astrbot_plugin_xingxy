@@ -1,6 +1,15 @@
 # Changelog
 
+## v0.4.9
+
+- 修复深链接正则未匹配 AstrBot 去掉 `/` 唤醒前缀后的 `start xybind_<token>`，保留完整令牌并调用原有确认接口。
+- 删除裸 `/start` 触发最近授权记录确认的逻辑，绑定确认必须携带对应令牌。
+- 遮盖日志中的 `xybind_` 令牌；正常 `/start` 和邀请参数不由绑定处理器消费。
+- 补充规范化输入、平台/trace/开关限制和日志令牌处理的回归检查。
+
 ## v0.4.8
+
+此版本对“Telegram 丢失参数”的判断后来被运行日志证伪；该兜底逻辑在 v0.4.9 删除。
 
 - Handle a Telegram `/start` without a preserved deep-link parameter by confirming the newest authorized pending binding for the authenticated sender.
 - Keep ordinary `/start` messages untouched when no pending binding exists.

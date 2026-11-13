@@ -16,6 +16,7 @@ _OAUTH_AUTHORIZE_URL_RE = re.compile(
     re.IGNORECASE,
 )
 _SITE_BALANCE_RE = re.compile(r"(站点积分余额[：:]\s*)[0-9]+")
+_BIND_START_PAYLOAD_RE = re.compile(r"(?<![A-Za-z0-9_])xybind_[A-Za-z0-9_-]+")
 
 
 def redact_sensitive_text(message: str) -> str:
@@ -25,6 +26,7 @@ def redact_sensitive_text(message: str) -> str:
         message,
     )
     message = _OAUTH_AUTHORIZE_URL_RE.sub("[REDACTED OAuth authorization URL]", message)
+    message = _BIND_START_PAYLOAD_RE.sub("xybind_[REDACTED]", message)
     return _SITE_BALANCE_RE.sub(r"\1[REDACTED]", message)
 
 
