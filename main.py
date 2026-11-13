@@ -553,6 +553,8 @@ class XingxyPlugin(Star):
 
     async def _bind_deep_link_text(self, event: AstrMessageEvent) -> str:
         """Confirm a site-owned binding from a Telegram start deep link."""
+        if not self._enabled():
+            return self._disabled_message()
         if not self._binding_enabled():
             return "网站账号绑定当前未启用。"
         if not self._is_telegram_private(event):
