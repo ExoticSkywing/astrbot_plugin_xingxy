@@ -1182,6 +1182,8 @@ class XingxyPluginTests(unittest.TestCase):
 
         def transport(url, body, headers):
             calls.append((url, body, headers))
+            if url.endswith("/identity/resolve"):
+                return 200, b'{"ok":true,"bound":false,"user":null}'
             if url.endswith("/identity/link/start"):
                 return 200, json.dumps(
                     {
@@ -1217,14 +1219,19 @@ class XingxyPluginTests(unittest.TestCase):
         )[0]
         self.assertIn("网站账号绑定成功", confirmed)
         self.assertIn("网站 user_id：42", confirmed)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3)
         self.assertEqual(calls[0][1], b'{"tg_uid":"7001"}')
-        self.assertEqual(calls[0][2]["X-Xingxy-Key-Id"], "binding-key")
+        self.assertEqual(calls[0][2]["X-Xingxy-Key-Id"], "read-key")
         self.assertEqual(
             calls[1][1],
-            b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
+            b'{"tg_uid":"7001"}',
         )
         self.assertEqual(calls[1][2]["X-Xingxy-Key-Id"], "binding-key")
+        self.assertEqual(
+            calls[2][1],
+            b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
+        )
+        self.assertEqual(calls[2][2]["X-Xingxy-Key-Id"], "binding-key")
         self.assertFalse(plugin.store.path.exists())
         self.assertIn(None, context.config_reads)
 
@@ -1232,9 +1239,9 @@ class XingxyPluginTests(unittest.TestCase):
         deep_link = _collect(plugin.cmd_bind_deep_link(deep_link_event))[0]
         self.assertIn("网站账号绑定成功", deep_link)
         self.assertTrue(deep_link_event.stopped)
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 4)
         self.assertEqual(
-            calls[2][1],
+            calls[3][1],
             b'{"tg_uid":"7001","confirmation_code":"A1b2C3d4E5f6G7h8"}',
         )
 
@@ -1260,6 +1267,52 @@ class XingxyPluginTests(unittest.TestCase):
         self.assertNotIn(code, output)
         self.assertNotIn("raw private response", output)
         self.assertFalse(plugin.store.path.exists())
+
+    def test_bind_does_not_reauthorize_existing_identity_unless_verify_command_is_used(self):
+        site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
+        site_origin = "https://example.test"
+        authorization_url = site_origin + site_api.OAUTH_AUTHORIZE_PATH + "?" + urlencode(
+            {
+                "client_id": "dedicated-link-client",
+                "response_type": "code",
+                "scope": "basic",
+                "redirect_uri": site_origin + site_api.OAUTH_CALLBACK_PATH,
+                "state": "s" * 43,
+                "code_challenge": "c" * 43,
+                "code_challenge_method": "S256",
+            }
+        )
+        config = {
+            "binding_enabled": True,
+            "site_base_url": site_origin,
+            "service_key_id": "read-key",
+            "service_secret": "r" * 32,
+            "binding_service_key_id": "binding-key",
+            "binding_service_secret": "b" * 32,
+        }
+        plugin = self.module.XingxyPlugin(FakeContext(), config)
+        calls = []
+
+        def transport(url, body, headers):
+            calls.append((url, headers["X-Xingxy-Key-Id"]))
+            if url.endswith("/identity/resolve"):
+                return 200, b'{"ok":true,"bound":true,"user":{"user_id":42,"tg_uid":"7001","status":"active"}}'
+            return 200, json.dumps({
+                "ok": True,
+                "status": "authorization_required",
+                "authorization_url": authorization_url,
+                "expires_in": 600,
+            }).encode()
+
+        plugin.site_transport = transport
+        normal = _collect(plugin.cmd_bind(FakeEvent()))[0]
+        self.assertIn("已绑定网站 user_id：42", normal)
+        self.assertIn("/xy_bind_verify", normal)
+        self.assertEqual(calls, [("https://example.test/wp-json/xingxy-ecosystem/v1/identity/resolve", "read-key")])
+
+        verify = _collect(plugin.cmd_bind_verify(FakeEvent()))[0]
+        self.assertIn(authorization_url, verify)
+        self.assertEqual(calls[-1][1], "binding-key")
 
     def test_read_and_binding_commands_use_separate_credentials_without_fallback(self):
         site_api = sys.modules["astrbot_plugin_xingxy.site_api"]
@@ -1295,8 +1348,8 @@ class XingxyPluginTests(unittest.TestCase):
             if url.endswith("/identity/resolve"):
                 response = {
                     "ok": True,
-                    "bound": True,
-                    "user": {"user_id": 12, "tg_uid": "7001", "status": "active"},
+                    "bound": False,
+                    "user": None,
                 }
             elif url.endswith("/identity/link/start"):
                 response = {
@@ -1319,7 +1372,7 @@ class XingxyPluginTests(unittest.TestCase):
         _collect(plugin.cmd_bind_confirm(FakeEvent(), "A1b2C3d4E5f6G7h8"))
         self.assertEqual(
             [call[2]["X-Xingxy-Key-Id"] for call in calls],
-            ["read-key", "binding-key", "binding-key"],
+            ["read-key", "read-key", "binding-key", "binding-key"],
         )
         self.assertEqual(calls[0][1], b'{"tg_uid":"7001"}')
         self.assertEqual(calls[1][1], b'{"tg_uid":"7001"}')

@@ -479,7 +479,7 @@ class XingxyPlugin(Star):
             for issue in configuration_issues(self._binding_site_config())
         )
 
-    async def _bind_start_text(self, event: AstrMessageEvent) -> str:
+    async def _bind_start_text(self, event: AstrMessageEvent, reauthorize: bool = False) -> str:
         if not self._binding_enabled():
             return "网站账号绑定当前未启用。"
         if not self._is_telegram_private(event):
@@ -491,6 +491,22 @@ class XingxyPlugin(Star):
             return "无法读取有效的 Telegram 用户 ID。"
         if self._binding_configuration_issues():
             return "网站账号绑定尚未配置完整，请联系管理员。"
+        if not reauthorize:
+            try:
+                identity = await SiteApiClient(
+                    self.config,
+                    transport=self.site_transport,
+                ).resolve_identity(tg_uid)
+            except SiteApiError:
+                return "暂时无法确认当前绑定状态，请稍后重试。"
+            except Exception:
+                return "暂时无法确认当前绑定状态，请稍后重试。"
+            if identity["status"] == "active":
+                return (
+                    "数据来源：Xingxy 网站\n"
+                    "此 Telegram 账号已绑定网站 user_id：{user_id}。\n"
+                    "如需重新验证，请发送 /xy_bind_verify。"
+                ).format(user_id=identity["user_id"])
         try:
             result = await self._binding_site_client().start_link(tg_uid)
         except SiteApiError:
@@ -598,7 +614,8 @@ class XingxyPlugin(Star):
             "/xy_identity — 按 backend_mode 查看身份（site 模式为只读）\n"
             "/xy_site_identity — 只读查询网站身份（Telegram 私聊）\n"
             "/xy_balance — 只读查询真实站点积分（Telegram 私聊）\n"
-            "/xy_bind — 申请网站授权；重新授权不会自动替换已有绑定\n"
+            "/xy_bind — 首次申请网站授权；已绑定账号直接显示绑定状态\n"
+            "/xy_bind_verify — 已绑定账号重新验证授权\n"
             "/xy_bind_confirm <code> — 授权后返回本私聊确认绑定\n"
             "/xy_status — 查看模式和网站 API 配置状态\n"
             "/xy_checkin [event_id] — 按 backend_mode 签到；可传 event_id 安全重试\n"
@@ -707,6 +724,13 @@ class XingxyPlugin(Star):
             yield event.plain_result(self._disabled_message())
             return
         yield event.plain_result(await self._bind_start_text(event))
+
+    @filter.command("xy_bind_verify")
+    async def cmd_bind_verify(self, event: AstrMessageEvent):
+        if not self._enabled():
+            yield event.plain_result(self._disabled_message())
+            return
+        yield event.plain_result(await self._bind_start_text(event, reauthorize=True))
 
     @filter.command("xy_bind_confirm")
     async def cmd_bind_confirm(
